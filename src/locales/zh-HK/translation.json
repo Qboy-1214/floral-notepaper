@@ -79,6 +79,9 @@
       "rename": "重新命名",
       "uncategorized": "未分類"
     },
+    "localSource": "本地",
+    "noRemoteSource": "請在設定中配置遠端數據源",
+    "remoteSource": "遠端",
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未儲存的變更，是否儲存到原檔案？"
     },

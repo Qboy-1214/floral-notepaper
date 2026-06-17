@@ -79,6 +79,9 @@
       "rename": "Rename",
       "uncategorized": "Uncategorized"
     },
+    "localSource": "Local",
+    "noRemoteSource": "Please configure remote data source in settings",
+    "remoteSource": "Remote",
     "confirm": {
       "unsavedExternalFile": "\"{{title}}\" has unsaved changes. Save to the original file?"
     },
