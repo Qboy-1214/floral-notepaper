@@ -353,6 +353,9 @@ export function MainWindow({
   const [categoryMenuClosing, setCategoryMenuClosing] = useState(false);
   const [categoryMenuConfirmDelete, setCategoryMenuConfirmDelete] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const splitEditorRef = useRef<HTMLTextAreaElement>(null);
+  const splitPreviewRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
   const windowLabelRef = useRef("main");
   const externalFileMtimeRef = useRef<number>(0);
   const lastExternalSaveRef = useRef<number>(0);
@@ -854,6 +857,49 @@ export function MainWindow({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // 分栏模式滚动同步
+  useEffect(() => {
+    const editor = splitEditorRef.current;
+    const preview = splitPreviewRef.current;
+    if (!editor || !preview) return;
+
+    const syncEditorToPreview = () => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      const editorScrollable = editor.scrollHeight - editor.clientHeight;
+      const previewScrollable = preview.scrollHeight - preview.clientHeight;
+      if (editorScrollable > 0 && previewScrollable > 0) {
+        const ratio = editor.scrollTop / editorScrollable;
+        preview.scrollTop = ratio * previewScrollable;
+      }
+      requestAnimationFrame(() => {
+        isSyncingScroll.current = false;
+      });
+    };
+
+    const syncPreviewToEditor = () => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      const editorScrollable = editor.scrollHeight - editor.clientHeight;
+      const previewScrollable = preview.scrollHeight - preview.clientHeight;
+      if (editorScrollable > 0 && previewScrollable > 0) {
+        const ratio = preview.scrollTop / previewScrollable;
+        editor.scrollTop = ratio * editorScrollable;
+      }
+      requestAnimationFrame(() => {
+        isSyncingScroll.current = false;
+      });
+    };
+
+    editor.addEventListener("scroll", syncEditorToPreview, { passive: true });
+    preview.addEventListener("scroll", syncPreviewToEditor, { passive: true });
+
+    return () => {
+      editor.removeEventListener("scroll", syncEditorToPreview);
+      preview.removeEventListener("scroll", syncPreviewToEditor);
+    };
+  }, [viewMode]);
 
   useEffect(() => {
     const unlisten = listen<string>("open-external-file", (event) => {
@@ -2710,7 +2756,12 @@ export function MainWindow({
 
                       <div className="flex-1 overflow-hidden px-5 pb-4">
                         <textarea
-                          ref={contentRef}
+                          ref={(el) => {
+                            // @ts-expect-error: assign to both refs
+                            contentRef.current = el;
+                            // @ts-expect-error: assign to split ref
+                            splitEditorRef.current = el;
+                          }}
                           data-tab-indent="true"
                           value={content}
                           onChange={(event) => {
@@ -2780,6 +2831,7 @@ export function MainWindow({
                         </div>
                       )}
                       <div
+                        ref={splitPreviewRef}
                         className={`flex-1 overflow-y-auto px-6 pb-6 ${
                           viewMode === "preview" ? "pt-3" : "pt-1"
                         }`}
