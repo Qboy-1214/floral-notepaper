@@ -35,6 +35,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 import { SourceTabBar } from "./SourceTabBar";
 import { DirectoryTree } from "./DirectoryTree";
+import { LiveEditor } from "./LiveEditor";
 import {
   createNote,
   createCategory,
@@ -834,6 +835,20 @@ export function MainWindow({
         const next = current === "dark" ? "light" : "dark";
         applyTheme(next);
         watchSystemTheme(next);
+      }
+      // Ctrl+1~4 切换视图模式
+      if (e.metaKey || e.ctrlKey) {
+        const modeMap: Record<string, ViewMode> = {
+          "1": "edit",
+          "2": "live",
+          "3": "split",
+          "4": "preview",
+        };
+        const mode = modeMap[e.key];
+        if (mode) {
+          e.preventDefault();
+          setViewMode(mode);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1642,6 +1657,53 @@ export function MainWindow({
             </span>
           </div>
           <div className="flex items-center">
+            {/* 视图模式切换 */}
+            <div className="flex items-center gap-0.5 mr-1">
+              {[
+                {
+                  mode: "edit" as const,
+                  icon: "M12 19l7-7 3 3-7 7-3-3z M18.5 2.5l-1.4 1.4M15 6l-3 3",
+                  title: "编辑",
+                },
+                {
+                  mode: "live" as const,
+                  icon: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+                  title: "即时",
+                },
+                { mode: "split" as const, icon: "M12 3v18M3 12h18", title: "分栏" },
+                {
+                  mode: "preview" as const,
+                  icon: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+                  title: "预览",
+                },
+              ].map(({ mode, icon, title }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+                    viewMode === mode
+                      ? "bg-bamboo-mist/60 text-bamboo"
+                      : "text-ink-ghost hover:text-ink-soft hover:bg-paper-warm/60"
+                  }`}
+                  title={title}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d={icon} />
+                  </svg>
+                </button>
+              ))}
+            </div>
+            <div className="w-px h-5 bg-paper-deep/30 mx-1" />
             <button
               onClick={() => void handleOpenNotepad()}
               className="w-10 h-11 flex items-center justify-center text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50 transition-all cursor-pointer"
@@ -2619,29 +2681,32 @@ export function MainWindow({
                       className="flex flex-col min-h-0 shrink-0"
                       style={{ width: viewMode === "split" ? `${splitRatio * 100}%` : "100%" }}
                     >
-                      <div className="flex items-center gap-0.5 px-4 pt-2 pb-1 shrink-0">
-                        {toolbarButtons.map((button) => (
-                          <button
-                            key={button.label}
-                            title={button.title}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              if (contentRef.current) {
-                                applyFormat(
-                                  contentRef.current,
-                                  button.action,
-                                  t,
-                                  setContent,
-                                  markDirty,
-                                );
-                              }
-                            }}
-                            className={`w-6 h-6 flex items-center justify-center rounded text-[11px] text-ink-ghost hover:text-ink-faint hover:bg-paper-warm transition-all cursor-pointer ${button.style}`}
-                          >
-                            {button.label}
-                          </button>
-                        ))}
-                      </div>
+                      {/* 格式化工具栏只在 edit 模式显示 */}
+                      {viewMode === "edit" && (
+                        <div className="flex items-center gap-0.5 px-4 pt-2 pb-1 shrink-0">
+                          {toolbarButtons.map((button) => (
+                            <button
+                              key={button.label}
+                              title={button.title}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                if (contentRef.current) {
+                                  applyFormat(
+                                    contentRef.current,
+                                    button.action,
+                                    t,
+                                    setContent,
+                                    markDirty,
+                                  );
+                                }
+                              }}
+                              className={`w-6 h-6 flex items-center justify-center rounded text-[11px] text-ink-ghost hover:text-ink-faint hover:bg-paper-warm transition-all cursor-pointer ${button.style}`}
+                            >
+                              {button.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="flex-1 overflow-hidden px-5 pb-4">
                         <textarea
@@ -2667,6 +2732,21 @@ export function MainWindow({
                           disabled={!selectedId}
                         />
                       </div>
+                    </div>
+                  )}
+
+                  {viewMode === "live" && (
+                    <div className="flex-1 overflow-hidden">
+                      <LiveEditor
+                        content={content}
+                        onChange={(value) => {
+                          setContent(value);
+                          markDirty();
+                        }}
+                        fontSize={settingsConfig?.fontSize ?? 14}
+                        imageBaseDir={imageBaseDir ?? undefined}
+                        renderHtml={settingsConfig?.renderHtmlMarkdown ?? false}
+                      />
                     </div>
                   )}
 

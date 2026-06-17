@@ -631,6 +631,12 @@ input::placeholder {
   height: auto;
 }
 
+/* LiveEditor: textarea 文字透明，只显示光标 */
+.live-editor-layer textarea {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+}
+
 /* ── GFM Alerts ── */
 .markdown-alert {
   margin: 0.75rem 0;
