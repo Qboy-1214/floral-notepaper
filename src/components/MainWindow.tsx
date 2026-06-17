@@ -15,6 +15,8 @@ import {
   saveConfig,
 } from "../features/settings/api";
 import type { AppConfig, ViewMode } from "../features/settings/types";
+import type { RemoteSource, RemoteMount, RemoteTreeNode } from "../features/remote/types";
+import { fetchMounts, fetchRecursiveTree, fetchFile, saveFile } from "../features/remote/api";
 import { normalizeTileColor } from "../features/settings/tileColor";
 import { applyTheme, watchSystemTheme } from "../features/settings/theme";
 import { getUpdateStatus, reportInstallPreparation } from "../features/update/api";
@@ -35,6 +37,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 import { SourceTabBar } from "./SourceTabBar";
 import { DirectoryTree } from "./DirectoryTree";
+import { RemoteDirectoryTree } from "./RemoteDirectoryTree";
 import { LiveEditor } from "./LiveEditor";
 import {
   createNote,
@@ -333,6 +336,11 @@ export function MainWindow({
   const [pinnedTileIds, setPinnedTileIds] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<string[]>([]);
   const [sourceTab, setSourceTab] = useState<"local" | "remote">("local");
+  const [remoteSources, setRemoteSources] = useState<RemoteSource[]>([]);
+  const [remoteMounts, setRemoteMounts] = useState<Map<string, RemoteMount[]>>(new Map());
+  const [remoteTrees, setRemoteTrees] = useState<Map<string, RemoteTreeNode[]>>(new Map());
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteNoteIds, setRemoteNoteIds] = useState<Set<string>>(new Set());
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [showCategoryInput, setShowCategoryInput] = useState(false);
@@ -901,6 +909,59 @@ export function MainWindow({
     };
   }, [viewMode]);
 
+  // 远程数据加载
+  useEffect(() => {
+    if (sourceTab !== "remote") return;
+    const sources = config.remoteSources || [];
+    setRemoteSources(sources);
+
+    if (sources.length === 0) {
+      setRemoteMounts(new Map());
+      setRemoteTrees(new Map());
+      return;
+    }
+
+    let cancelled = false;
+    const loadAll = async () => {
+      setRemoteLoading(true);
+      try {
+        const mountsMap = new Map<string, RemoteMount[]>();
+        for (const src of sources) {
+          try {
+            const mounts = await fetchMounts(src.baseUrl);
+            mountsMap.set(src.id, mounts);
+          } catch {
+            mountsMap.set(src.id, []);
+          }
+        }
+        if (!cancelled) {
+          setRemoteMounts(mountsMap);
+          // 自动加载第一个数据源的第一棵树
+          const firstSource = sources[0];
+          const firstMounts = mountsMap.get(firstSource.id) || [];
+          if (firstMounts.length > 0) {
+            const firstMount = firstMounts[0];
+            try {
+              const tree = await fetchRecursiveTree(firstSource.baseUrl, firstMount.id);
+              if (!cancelled) {
+                setRemoteTrees(new Map([[firstMount.id, tree]]));
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } finally {
+        if (!cancelled) setRemoteLoading(false);
+      }
+    };
+
+    void loadAll();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceTab, config.remoteSources]);
+
   useEffect(() => {
     const unlisten = listen<string>("open-external-file", (event) => {
       void loadExternalFile(event.payload);
@@ -1057,6 +1118,28 @@ export function MainWindow({
   const saveCurrentNote = useCallback(async () => {
     if (!selectedId) return null;
 
+    // 远程笔记保存
+    if (selectedId.includes(":") && remoteNoteIds.has(selectedId)) {
+      const colonIdx = selectedId.indexOf(":");
+      const mountId = selectedId.slice(0, colonIdx);
+      const filePath = selectedId.slice(colonIdx + 1);
+      const source = remoteSources.find((s) =>
+        (remoteMounts.get(s.id) || []).some((m) => m.id === mountId),
+      );
+      if (source) {
+        setSaveState("saving");
+        try {
+          await saveFile(source.baseUrl, mountId, filePath, content);
+          setSaveState("saved");
+          return { id: selectedId, title, content } as Note;
+        } catch (error) {
+          setSaveState("error");
+          showToast(getErrorMessage(error));
+          return null;
+        }
+      }
+    }
+
     if (isExternal && selectedExternalFile) {
       setSaveState("saving");
       try {
@@ -1094,6 +1177,9 @@ export function MainWindow({
     selectedId,
     selectedNote,
     title,
+    remoteNoteIds,
+    remoteSources,
+    remoteMounts,
   ]);
 
   useEffect(() => {
@@ -1332,6 +1418,42 @@ export function MainWindow({
       setSaveState("saved");
       setNoteTransitionKey((k) => k + 1);
       externalFileMtimeRef.current = mtime;
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSelectRemoteNote = async (noteKey: string) => {
+    // noteKey 格式: {mountId}:{path}
+    if (noteKey === selectedId) return;
+    if (saveState === "dirty") {
+      await saveCurrentNote();
+    }
+
+    // 从 noteKey 解析 mountId 和 path
+    const colonIdx = noteKey.indexOf(":");
+    if (colonIdx < 0) return;
+    const mountId = noteKey.slice(0, colonIdx);
+    const filePath = noteKey.slice(colonIdx + 1);
+
+    // 找到对应的 source 和 mount
+    const source = remoteSources.find((s) =>
+      (remoteMounts.get(s.id) || []).some((m) => m.id === mountId),
+    );
+    const mount = (remoteMounts.get(source?.id || "") || []).find((m) => m.id === mountId);
+    if (!source || !mount) return;
+
+    setIsLoading(true);
+    try {
+      const fileContent = await fetchFile(source.baseUrl, mountId, filePath);
+      setSelectedId(noteKey);
+      setTitle(filePath.split("/").pop() || filePath);
+      setContent(fileContent);
+      setSaveState("saved");
+      setNoteTransitionKey((k) => k + 1);
+      setRemoteNoteIds((prev) => new Set(prev).add(noteKey));
     } catch (error) {
       showToast(getErrorMessage(error));
     } finally {
@@ -2090,9 +2212,35 @@ export function MainWindow({
 
               <div className="flex-1 overflow-y-auto px-2 pb-2">
                 {sourceTab === "remote" ? (
-                  <div className="flex items-center justify-center h-32 text-[12px] text-ink-faint">
-                    {t("noRemoteSource", { defaultValue: "请在设置中配置远程数据源" })}
-                  </div>
+                  remoteSources.length === 0 ? (
+                    <div className="flex items-center justify-center h-32 text-[12px] text-ink-faint">
+                      {t("noRemoteSource", { defaultValue: "请在设置中配置远程数据源" })}
+                    </div>
+                  ) : (
+                    <RemoteDirectoryTree
+                      mounts={remoteSources.flatMap((s) => remoteMounts.get(s.id) || [])}
+                      trees={remoteTrees}
+                      selectedNoteId={selectedId}
+                      onSelectNote={(id) => void handleSelectRemoteNote(id)}
+                      onFetchTree={async (mountId, path) => {
+                        const source = remoteSources.find((s) =>
+                          (remoteMounts.get(s.id) || []).some((m) => m.id === mountId),
+                        );
+                        if (!source) return;
+                        try {
+                          const tree = await fetchRecursiveTree(source.baseUrl, mountId, path);
+                          setRemoteTrees((prev) => {
+                            const next = new Map(prev);
+                            next.set(mountId, tree);
+                            return next;
+                          });
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      loading={remoteLoading}
+                    />
+                  )
                 ) : (
                   <div className="space-y-0.5">
                     {externalFiles.length > 0 && (
