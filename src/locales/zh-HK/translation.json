@@ -208,6 +208,7 @@
     "defaultView": {
       "edit": "編輯",
       "label": "預設檢視",
+      "live": "即時",
       "preview": "預覽",
       "split": "分欄"
     },
@@ -251,7 +252,9 @@
       "dark": "深色",
       "label": "主題",
       "light": "淺色",
-      "system": "跟隨系統"
+      "system": "跟隨系統",
+      "solarized-light": "Solarized Light",
+      "nord-dark": "Nord Dark"
     },
     "tileColor": {
       "custom": "自訂",

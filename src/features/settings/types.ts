@@ -1,4 +1,4 @@
-export type ViewMode = "edit" | "split" | "preview";
+export type ViewMode = "edit" | "live" | "split" | "preview";
 
 export type ThemeOption = string;
 

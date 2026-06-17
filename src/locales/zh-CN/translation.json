@@ -208,6 +208,7 @@
     "defaultView": {
       "edit": "编辑",
       "label": "默认视图",
+      "live": "即时",
       "preview": "预览",
       "split": "分栏"
     },
@@ -251,7 +252,9 @@
       "dark": "深色",
       "label": "主题",
       "light": "浅色",
-      "system": "跟随系统"
+      "system": "跟随系统",
+      "solarized-light": "Solarized Light",
+      "nord-dark": "Nord Dark"
     },
     "tileColor": {
       "custom": "自定义",

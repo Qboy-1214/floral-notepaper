@@ -19,6 +19,7 @@ import {
 import { useShortcutRecorder } from "../features/settings/useShortcutRecorder";
 import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
 import { applyTheme, watchSystemTheme } from "../features/settings/theme";
+import { THEMES } from "../features/themes";
 import { LOCALE_OPTIONS } from "../locales/locale-whitelist";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 
@@ -60,9 +61,21 @@ export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: S
     ],
     [t],
   );
+
+  const themeGallery = useMemo(
+    () =>
+      THEMES.map((theme) => ({
+        id: theme.id,
+        name: theme.name,
+        type: theme.type,
+        colors: theme.colors,
+      })),
+    [],
+  );
   const viewModes = useMemo<Array<{ value: ViewMode; label: string }>>(
     () => [
       { value: "edit", label: t("settings.defaultView.edit", { defaultValue: "编辑" }) },
+      { value: "live", label: t("settings.defaultView.live", { defaultValue: "即时" }) },
       { value: "split", label: t("settings.defaultView.split", { defaultValue: "分栏" }) },
       {
         value: "preview",
@@ -128,6 +141,37 @@ export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: S
               watchSystemTheme(v);
             }}
           />
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {themeGallery.map((theme) => (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => {
+                  setConfigValue("theme", theme.id);
+                  applyTheme(theme.id);
+                  watchSystemTheme(theme.id);
+                }}
+                className={`flex items-center gap-2 p-2 rounded-lg border transition-colors ${
+                  config.theme === theme.id
+                    ? "border-bamboo bg-bamboo-mist/50"
+                    : "border-paper-deep hover:border-stone"
+                }`}
+              >
+                <div className="flex gap-0.5 shrink-0 rounded overflow-hidden">
+                  {[
+                    theme.colors["color-paper"],
+                    theme.colors["color-ink"],
+                    theme.colors["color-bamboo"],
+                    theme.colors["color-paper-warm"],
+                    theme.colors["color-bamboo-light"],
+                  ].map((c, i) => (
+                    <div key={i} className="w-3 h-6" style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+                <span className="text-[11px] text-ink-soft truncate">{theme.name}</span>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="space-y-2">
