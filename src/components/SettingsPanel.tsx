@@ -10,6 +10,9 @@ import type {
   TileColorMode,
   ViewMode,
 } from "../features/settings/types";
+import type { RemoteSource } from "../features/remote/types";
+import { testConnection } from "../features/remote/api";
+import { RemoteSourceDialog } from "./RemoteSourceDialog";
 import {
   formatHeldKeys,
   hotkeyToConfigString,
@@ -37,6 +40,23 @@ export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: S
   const setConfigValue = <Key extends keyof AppConfig>(key: Key, value: AppConfig[Key]) => {
     onChange({ ...config, [key]: value });
   };
+  const [editingRemote, setEditingRemote] = useState<RemoteSource | null>(null);
+  const [testingRemoteUrl, setTestingRemoteUrl] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<"success" | "failed" | null>(null);
+
+  const handleTestConnection = async (baseUrl: string) => {
+    setTestingRemoteUrl(baseUrl);
+    setTestResult(null);
+    const ok = await testConnection(baseUrl);
+    setTestResult(ok ? "success" : "failed");
+    setTestingRemoteUrl(null);
+  };
+
+  const handleDeleteRemote = (id: string) => {
+    const sources = (config.remoteSources || []).filter((s) => s.id !== id);
+    setConfigValue("remoteSources", sources);
+  };
+
   const tileColorModes = useMemo<Array<{ value: TileColorMode; label: string }>>(
     () => [
       {
@@ -506,7 +526,91 @@ export function SettingsPanel({ config, onChange, onChooseNotesDir, onClose }: S
             </a>
           </p>
         </section>
+
+        {/* 远程数据源 */}
+        <section className="space-y-2">
+          <label className="block text-[11px] font-body text-ink-faint">
+            {t("settings.remoteSources", { defaultValue: "远程数据源" })}
+          </label>
+          {(config.remoteSources || []).map((src) => (
+            <div
+              key={src.id}
+              className="flex items-center gap-2 p-2 rounded-lg border border-paper-deep/30 bg-paper-warm/30"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] text-ink font-medium truncate">{src.name}</div>
+                <div className="text-[10px] text-ink-faint font-mono truncate">{src.baseUrl}</div>
+              </div>
+              <button
+                onClick={() => handleTestConnection(src.baseUrl)}
+                className="px-2 py-1 text-[10px] rounded bg-paper-warm text-ink-soft hover:bg-paper-deep/40 transition-colors cursor-pointer shrink-0"
+              >
+                {t("settings.testConnection", { defaultValue: "测试连接" })}
+              </button>
+              <button
+                onClick={() => setEditingRemote(src)}
+                className="text-ink-faint hover:text-ink-soft transition-colors cursor-pointer shrink-0"
+                title={t("settings.editRemoteSource", { defaultValue: "编辑远程数据源" })}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => handleDeleteRemote(src.id)}
+                className="text-ink-faint hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                title={t("settings.deleteRemoteSource", { defaultValue: "删除远程数据源" })}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => setEditingRemote({ id: crypto.randomUUID(), name: "", baseUrl: "" })}
+            className="w-full py-1.5 text-[11px] rounded-lg border border-dashed border-paper-deep/40 text-ink-faint hover:border-bamboo/30 hover:text-bamboo transition-colors cursor-pointer"
+          >
+            + {t("settings.addRemoteSource", { defaultValue: "添加远程数据源" })}
+          </button>
+        </section>
       </div>
+      {editingRemote && (
+        <RemoteSourceDialog
+          source={editingRemote}
+          onSave={(src) => {
+            const sources = [...(config.remoteSources || [])];
+            const idx = sources.findIndex((s) => s.id === src.id);
+            if (idx >= 0) {
+              sources[idx] = src;
+            } else {
+              sources.push(src);
+            }
+            setConfigValue("remoteSources", sources);
+            setEditingRemote(null);
+          }}
+          onCancel={() => setEditingRemote(null)}
+          t={t}
+        />
+      )}
     </aside>
   );
 }
