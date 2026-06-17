@@ -157,7 +157,8 @@
       "about": "关于",
       "quickNotepad": "快捷便签",
       "restore": "还原",
-      "settings": "设置"
+      "settings": "设置",
+      "toggleTheme": "切换明暗"
     }
   },
   "noteMenu": {

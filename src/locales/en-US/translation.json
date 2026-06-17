@@ -157,7 +157,8 @@
       "about": "About",
       "quickNotepad": "Quick Note",
       "restore": "Restore",
-      "settings": "Settings"
+      "settings": "Settings",
+      "toggleTheme": "Toggle theme"
     }
   },
   "noteMenu": {
