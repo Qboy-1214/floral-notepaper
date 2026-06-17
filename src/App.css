@@ -620,6 +620,17 @@ input::placeholder {
   font-family: var(--font-mono);
 }
 
+/* Mermaid diagrams */
+.mermaid-container {
+  margin: 0.75rem 0;
+  display: flex;
+  justify-content: center;
+}
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ── GFM Alerts ── */
 .markdown-alert {
   margin: 0.75rem 0;

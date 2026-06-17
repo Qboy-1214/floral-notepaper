@@ -9,6 +9,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { MermaidDiagram } from "./MermaidDiagram";
 import type { Components } from "react-markdown";
 import "katex/dist/katex.min.css";
 import remarkAlerts from "./remarkAlerts";
@@ -207,6 +208,13 @@ const staticComponents: Components = {
     <hr className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent" />
   ),
   code: ({ className, children }) => {
+    const match = /language-(\w+)/.exec(className || "");
+    const lang = match ? match[1] : "";
+
+    if (lang === "mermaid") {
+      return <MermaidDiagram code={String(children).trim()} />;
+    }
+
     const isBlock = className?.startsWith("language-") || String(children).includes("\n");
     if (isBlock) {
       return (
