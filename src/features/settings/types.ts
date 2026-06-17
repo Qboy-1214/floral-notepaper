@@ -1,6 +1,6 @@
 export type ViewMode = "edit" | "split" | "preview";
 
-export type ThemeOption = "light" | "dark" | "system";
+export type ThemeOption = string;
 
 export type TileColorMode = "system" | "custom";
 export type BackgroundFit = "cover" | "contain" | "repeat";

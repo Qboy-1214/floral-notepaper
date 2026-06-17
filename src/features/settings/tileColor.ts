@@ -1,3 +1,4 @@
+import { getThemeById } from "../themes";
 import type { TileColorMode } from "./types";
 
 export const DEFAULT_TILE_COLOR = "#f6f3ec";
@@ -28,8 +29,10 @@ export function normalizeTileColor(value: string | null | undefined): string {
 
 export function resolveSystemTileColor(): string {
   if (typeof document === "undefined") return SYSTEM_TILE_COLOR_LIGHT;
-  const theme = document.documentElement.getAttribute("data-theme");
-  return theme === "dark" ? SYSTEM_TILE_COLOR_DARK : SYSTEM_TILE_COLOR_LIGHT;
+  const themeId = document.documentElement.getAttribute("data-theme") || "light";
+  const theme = getThemeById(themeId);
+  if (theme?.type === "dark") return SYSTEM_TILE_COLOR_DARK;
+  return SYSTEM_TILE_COLOR_LIGHT;
 }
 
 export function resolveTileColor(mode: TileColorMode, customColor: string): string {
