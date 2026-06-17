@@ -298,14 +298,6 @@ fn is_filesystem_root(path: &Path) -> bool {
     false
 }
 
-fn ensure_notes_suffix(dir: &str) -> String {
-    let path = Path::new(dir);
-    if path.file_name().and_then(|n| n.to_str()) == Some("notes") {
-        return dir.to_string();
-    }
-    path.join("notes").to_string_lossy().to_string()
-}
-
 fn is_safe_notes_dir(path: &Path) -> Result<(), AppError> {
     if is_filesystem_root(path) {
         return Err(AppError::new(
@@ -397,7 +389,21 @@ impl NoteStore {
 
     pub fn save_config(&self, mut config: AppConfig) -> Result<AppConfig, AppError> {
         self.ensure_base_dir()?;
-        config.notes_dir = ensure_notes_suffix(&config.notes_dir);
+
+        // 旧配置迁移：移除 ensure_notes_suffix 追加的 "notes" 子目录
+        let notes_path = Path::new(&config.notes_dir);
+        if notes_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            == Some("notes")
+        {
+            if !dir_has_any_files(notes_path)? {
+                if let Some(parent) = notes_path.parent() {
+                    config.notes_dir = parent.to_string_lossy().to_string();
+                }
+            }
+        }
+
         config.tab_indent_size = config.tab_indent_size.clamp(1, 8);
         is_safe_notes_dir(Path::new(&config.notes_dir))?;
         fs::create_dir_all(&config.notes_dir)?;
@@ -645,12 +651,7 @@ impl NoteStore {
         let notes_dir = self.notes_dir()?;
         fs::create_dir_all(&notes_dir)?;
         let mut categories = Vec::new();
-        for entry in fs::read_dir(&notes_dir)? {
-            let entry = entry?;
-            if entry.path().is_dir() {
-                categories.push(entry.file_name().to_string_lossy().to_string());
-            }
-        }
+        self.collect_categories(&notes_dir, "", &mut categories)?;
         categories.sort();
         Ok(categories)
     }
@@ -660,7 +661,8 @@ impl NoteStore {
         if name.is_empty() {
             return Err(AppError::category_name_empty());
         }
-        if name.contains('/') || name.contains('\\') || name.contains(':') || name.contains("..") {
+        // 允许 / 作为层级分隔符，但拒绝 .. 和 :
+        if name.contains("..") || name.contains(':') {
             return Err(AppError::category_name_invalid_chars());
         }
         let notes_dir = self.notes_dir()?;
@@ -793,7 +795,7 @@ impl NoteStore {
     fn default_config(&self) -> AppConfig {
         AppConfig {
             locale: default_locale(),
-            notes_dir: self.base_dir.join("notes").to_string_lossy().to_string(),
+            notes_dir: self.base_dir.to_string_lossy().to_string(),
             #[cfg(target_os = "macos")]
             global_shortcut: DEFAULT_MACOS_GLOBAL_SHORTCUT.into(),
             #[cfg(not(target_os = "macos"))]
@@ -933,6 +935,89 @@ impl NoteStore {
         Ok(())
     }
 
+    /// 检查目录下是否有任何文件（递归）
+    fn dir_has_any_files(dir: &Path) -> Result<bool, AppError> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                return Ok(true);
+            }
+            if path.is_dir() {
+                if Self::dir_has_any_files(&path)? {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    fn scan_dir_recursive(
+        &self,
+        dir: &Path,
+        category: &str,
+        notes: &mut Vec<NoteMetadata>,
+    ) -> Result<(), AppError> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                let sub_category = if category.is_empty() {
+                    entry.file_name().to_string_lossy().to_string()
+                } else {
+                    format!("{}/{}", category, entry.file_name().to_string_lossy())
+                };
+                self.scan_dir_recursive(&path, &sub_category, notes)?;
+            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                let Some(id) = id_from_file_name(&file_name) else {
+                    continue;
+                };
+                let content = fs::read_to_string(&path).unwrap_or_default();
+                let title = infer_title(&file_name, &content);
+                let modified = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .map(DateTime::<Utc>::from)
+                    .unwrap_or_else(|_| Utc::now());
+                notes.push(NoteMetadata {
+                    id,
+                    title,
+                    file_name,
+                    category: category.to_string(),
+                    created_at: modified,
+                    updated_at: modified,
+                    word_count: count_words(&content),
+                    preview: preview(&content),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn collect_categories(
+        &self,
+        dir: &Path,
+        prefix: &str,
+        categories: &mut Vec<String>,
+    ) -> Result<(), AppError> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let full = if prefix.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}/{}", prefix, name)
+                };
+                categories.push(full.clone());
+                self.collect_categories(&path, &full, categories)?;
+            }
+        }
+        Ok(())
+    }
+
     fn ensure_storage(&self) -> Result<(), AppError> {
         self.ensure_base_dir()?;
         let config = self.load_config()?;
@@ -1009,18 +1094,7 @@ impl NoteStore {
         let notes_dir = self.notes_dir()?;
         fs::create_dir_all(&notes_dir)?;
         let mut notes = Vec::new();
-
-        self.scan_dir_for_notes(&notes_dir, "", &mut notes)?;
-
-        for entry in fs::read_dir(&notes_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                let category = entry.file_name().to_string_lossy().to_string();
-                self.scan_dir_for_notes(&path, &category, &mut notes)?;
-            }
-        }
-
+        self.scan_dir_recursive(&notes_dir, "", &mut notes)?;
         Ok(MetadataFile { notes })
     }
 
